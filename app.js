@@ -21,6 +21,19 @@ function esc(s) {
 }
 function show(id, on) { $(id).classList.toggle("hidden", !on); }
 
+// Campos de texto que crescem com o conteúdo (sem rolagem lateral nem cortes)
+function autoGrow(el) {
+  el.style.height = "auto";
+  if (el.scrollHeight) el.style.height = el.scrollHeight + 2 + "px";
+}
+function growAll() {
+  document.querySelectorAll("textarea[data-auto]").forEach((el) => { if (el.offsetParent !== null) autoGrow(el); });
+}
+document.addEventListener("input", (e) => {
+  if (e.target.matches && e.target.matches("textarea[data-auto]")) autoGrow(e.target);
+});
+window.addEventListener("resize", growAll);
+
 /* ---------- autenticação ---------- */
 async function boot() {
   if (SUPABASE_URL.includes("SEU-PROJETO")) {
@@ -80,6 +93,7 @@ async function loadData() {
 }
 
 function renderAll() {
+  renderDue();
   renderDisciplinas();
   renderLista();
   renderStats();
@@ -103,6 +117,7 @@ document.querySelectorAll(".tabbar button").forEach((b) =>
     $("tab-" + b.dataset.tab).classList.remove("hidden");
     if (b.dataset.tab === "stats") renderStats();
     if (b.dataset.tab === "banco") renderLista();
+    if (b.dataset.tab === "adicionar") growAll();
   })
 );
 function goTab(name) { document.querySelector(`.tabbar button[data-tab="${name}"]`).click(); }
@@ -110,12 +125,13 @@ function goTab(name) { document.querySelector(`.tabbar button[data-tab="${name}"
 /* ---------- adicionar / editar ---------- */
 function renderAddAlts(values = []) {
   $("n-alts").innerHTML = LETRAS.map((l, i) =>
-    `<label>Alternativa ${l}<input id="n-alt-${i}" value="${esc(values[i] || "")}" ${i < 2 ? "required" : ""} /></label>`
+    `<label>Alternativa ${l}<textarea id="n-alt-${i}" rows="1" data-auto ${i < 2 ? "required" : ""}>${esc(values[i] || "")}</textarea></label>`
   ).join("");
+  growAll();
 }
 $("form-q").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const alts = LETRAS.map((_, i) => $("n-alt-" + i).value.trim());
+  const alts = LETRAS.map((_, i) => $("n-alt-" + i).value.replace(/\s*\n\s*/g, " ").trim());
   const correta = Number($("n-correta").value);
   const filled = alts.filter(Boolean);
   if (filled.length < 2) return setMsg($("form-msg"), "Preencha ao menos 2 alternativas.", "err");
@@ -192,20 +208,24 @@ function renderLista() {
   }
   $("lista").innerHTML = list.map((q) => {
     const s = statsFor(q.id);
-    const meta = [q.disciplina, q.banca, q.ano, s.total ? `${s.ok}/${s.total} acertos` : "não respondida"].filter(Boolean).join(" · ");
+    const meta = [q.gerada_ia ? "🤖 IA" : null, q.disciplina, q.banca, q.ano, s.total ? `${s.ok}/${s.total} acertos` : "não respondida"].filter(Boolean).join(" · ");
     return `<div class="card item">
       <div class="m">${esc(meta)}</div>
       <p class="t">${esc(q.enunciado)}</p>
       <div class="row">
         <button class="btn small" data-edit="${q.id}">Editar</button>
+        <button class="btn small" data-ai="${q.id}">🤖 Parecidas</button>
         <button class="btn small danger" data-del="${q.id}">Excluir</button>
       </div></div>`;
   }).join("");
 }
 $("b-busca").addEventListener("input", renderLista);
 $("lista").addEventListener("click", async (e) => {
-  const ed = e.target.closest("[data-edit]"), del = e.target.closest("[data-del]");
+  const txt = e.target.closest(".item .t");
+  if (txt) return txt.classList.toggle("open"); // toque no enunciado: expande / recolhe
+  const ed = e.target.closest("[data-edit]"), del = e.target.closest("[data-del]"), ai = e.target.closest("[data-ai]");
   if (ed) return editQuestion(ed.dataset.edit);
+  if (ai) return openAi(questions.find((x) => x.id === ai.dataset.ai));
   if (del && confirm("Excluir esta questão e o histórico dela?")) {
     const { error } = await sb.from("questions").delete().eq("id", del.dataset.del);
     if (error) return alert("Erro: " + error.message);
@@ -214,21 +234,60 @@ $("lista").addEventListener("click", async (e) => {
 });
 
 /* ---------- praticar ---------- */
-$("btn-iniciar").addEventListener("click", () => {
+function iniciarSessao() {
   const disc = $("f-disciplina").value, modo = $("f-modo").value;
   let pool = questions.filter((q) => !disc || q.disciplina === disc);
   const lastResult = {};
   [...attempts].reverse().forEach((a) => (lastResult[a.question_id] = a.acertou)); // mais recente por último
   if (modo === "erradas") pool = pool.filter((q) => lastResult[q.id] === false);
   if (modo === "novas") pool = pool.filter((q) => !(q.id in lastResult));
+  if (modo === "revisar") pool = pool.filter((q) => q.next_review && q.next_review <= hojeISO());
   if (!pool.length) {
     show("quiz", false);
-    return setMsg($("quiz-msg"), "Nenhuma questão para esse filtro.", "err");
+    return setMsg($("quiz-msg"), modo === "revisar" ? "Nada para revisar hoje. 🎉" : "Nenhuma questão para esse filtro.", modo === "revisar" ? "ok" : "err");
   }
   setMsg($("quiz-msg"), "");
-  session = { queue: shuffle(pool), i: 0, ok: 0, done: 0 };
+  // revisão: as mais atrasadas primeiro; demais modos: ordem aleatória
+  const queue = modo === "revisar" ? [...pool].sort((a, b) => a.next_review.localeCompare(b.next_review)) : shuffle(pool);
+  session = { queue, i: 0, ok: 0, done: 0 };
   showQuestion();
+}
+$("btn-iniciar").addEventListener("click", iniciarSessao);
+$("btn-due").addEventListener("click", () => {
+  $("f-disciplina").value = "";
+  $("f-modo").value = "revisar";
+  iniciarSessao();
 });
+
+/* ---------- revisão espaçada (Leitner) ---------- */
+const INTERVALOS = [1, 3, 7, 15, 30, 60]; // dias de espera por nível; errar volta ao nível 0
+const pad2 = (n) => String(n).padStart(2, "0");
+function isoLocal(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function hojeISO() { return isoLocal(new Date()); }
+function maisDias(n) { const d = new Date(); d.setDate(d.getDate() + n); return isoLocal(d); }
+function vencidas() { const h = hojeISO(); return questions.filter((q) => q.next_review && q.next_review <= h); }
+
+async function agendarRevisao(q, acertou) {
+  const box = acertou ? Math.min((q.box || 0) + 1, INTERVALOS.length - 1) : 0;
+  const next = maisDias(INTERVALOS[box]);
+  q.box = box;
+  q.next_review = next;
+  const { error } = await sb.from("questions").update({ box, next_review: next }).eq("id", q.id);
+  if (error) console.error("revisão espaçada (rodou o supabase-update-2.sql?):", error.message);
+}
+function renderDue() {
+  const n = vencidas().length;
+  show("due-banner", n > 0);
+  $("due-text").textContent = `🔁 ${n} ${n === 1 ? "questão" : "questões"} para revisar hoje`;
+  const opt = document.querySelector('#f-modo option[value="revisar"]');
+  if (opt) opt.textContent = `🔁 Revisar hoje (${n})`;
+}
+function revisaoResumo() {
+  const h = hojeISO(), lim = maisDias(7);
+  const hoje = questions.filter((q) => q.next_review && q.next_review <= h).length;
+  const sem = questions.filter((q) => q.next_review && q.next_review > h && q.next_review <= lim).length;
+  return `Revisão: ${hoje} para hoje · ${sem} nos próximos 7 dias`;
+}
 function shuffle(a) {
   a = [...a];
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -275,6 +334,8 @@ $("btn-responder").addEventListener("click", async () => {
 
   const { error } = await sb.from("attempts").insert({ question_id: current.id, escolhida: chosen, acertou });
   if (!error) attempts.unshift({ question_id: current.id, acertou, created_at: new Date().toISOString() });
+  await agendarRevisao(current, acertou);
+  renderDue();
 });
 $("btn-proxima").addEventListener("click", () => { session.i++; showQuestion(); });
 
@@ -297,9 +358,202 @@ function renderStats() {
   }).join("");
   $("stats").innerHTML = `<div class="card"><div class="muted">Aproveitamento geral</div>
     <div class="stat-big">${pct}%</div><div class="muted">${ok} acertos em ${total} respostas · ${questions.length} questões no banco</div>
+    <div class="muted" style="margin-top:6px">${revisaoResumo()}</div>
     <div class="bar"><i style="width:${pct}%"></i></div></div>
     <div class="card"><strong>Por disciplina</strong>${rows}</div>`;
 }
+
+/* ---------- Questões parecidas geradas por IA ---------- */
+let aiBase = null, aiGeradas = [];
+
+function openAi(q) {
+  if (!q) return;
+  aiBase = q;
+  aiGeradas = [];
+  $("ai-origem").textContent = q.enunciado.length > 400 ? q.enunciado.slice(0, 400) + "…" : q.enunciado;
+  $("ai-lista").innerHTML = "";
+  $("ai-resposta").value = "";
+  show("ai-salvar", false);
+  setMsg($("ai-msg"), "");
+  $("ai-gerar").disabled = false;
+  $("ai-dialog").showModal();
+}
+
+async function fnErro(error) {
+  const ctx = error.context;
+  try {
+    const j = await ctx.json();
+    if (j && j.code === "NOT_FOUND") return "A função automática não foi encontrada. Use o modo grátis (copiar e colar) ou publique-a: veja o README-IA.md.";
+    if (j && (j.error || j.message)) return j.error || j.message;
+  } catch (_) { /* sem corpo JSON */ }
+  if (ctx && ctx.status === 404) return "A função automática não foi encontrada. Use o modo grátis (copiar e colar) ou publique-a: veja o README-IA.md.";
+  return error.message || String(error);
+}
+
+function questaoValida(q) {
+  return q && typeof q.enunciado === "string" && q.enunciado.trim() &&
+    Array.isArray(q.alternativas) && q.alternativas.length >= 2 && q.alternativas.length <= 5 &&
+    q.alternativas.every((a) => typeof a === "string" && a.trim()) &&
+    Number.isInteger(q.correta) && q.correta >= 0 && q.correta < q.alternativas.length;
+}
+
+$("ai-gerar").addEventListener("click", async () => {
+  if (!aiBase) return;
+  $("ai-gerar").disabled = true;
+  show("ai-salvar", false);
+  $("ai-lista").innerHTML = "";
+  setMsg($("ai-msg"), "Gerando… pode levar até 30 segundos.");
+  const { data, error } = await sb.functions.invoke("gerar-similares", {
+    body: {
+      enunciado: aiBase.enunciado,
+      alternativas: aiBase.alternativas,
+      correta: aiBase.correta,
+      comentario: aiBase.comentario,
+      disciplina: aiBase.disciplina,
+      banca: aiBase.banca,
+      quantidade: Number($("ai-n").value),
+    },
+  });
+  $("ai-gerar").disabled = false;
+  if (error) return setMsg($("ai-msg"), await fnErro(error), "err");
+
+  mostrarGeradas(data?.questoes || []);
+});
+
+/* --- modo grátis: copiar o pedido, colar a resposta de qualquer IA --- */
+function montarPedido(q, n) {
+  const alts = q.alternativas.map((a, i) => `${LETRAS[i]}) ${a}`).join("\n");
+  return [
+    "Você é professor e elaborador de questões de concursos públicos brasileiros. Escreva em português do Brasil, com rigor técnico e no estilo da banca informada.",
+    "",
+    "Questão-modelo:",
+    q.banca ? `Banca: ${q.banca}` : false,
+    q.disciplina ? `Disciplina: ${q.disciplina}` : false,
+    `Enunciado: ${q.enunciado}`,
+    alts,
+    `Gabarito: ${LETRAS[q.correta]}`,
+    q.comentario ? `Comentário: ${q.comentario}` : false,
+    "",
+    `Crie ${n} questões NOVAS que cobrem o MESMO ponto, regra ou conceito da questão-modelo, mas por caminhos diferentes: mude o contexto ou o caso prático, a redação e o ângulo (por exemplo: pedir a incorreta em vez da correta, inverter a afirmação, trocar o exemplo, variar a pegadinha). Cada questão deve testar se o aluno realmente domina o ponto, e não apenas decorou a questão original.`,
+    "",
+    "Regras:",
+    `- Mesma quantidade de alternativas da questão-modelo (${q.alternativas.length}); exatamente UMA correta.`,
+    "- Alternativas erradas plausíveis (erros sutis, trocas de termo, exceções), nunca absurdas.",
+    "- Varie a posição da alternativa correta entre as questões.",
+    "- Não repita nem parafraseie de perto a questão-modelo nem as outras geradas.",
+    "- NÃO cite número de artigo, lei, súmula ou data a menos que tenha certeza absoluta; na dúvida, descreva a regra sem o número.",
+    "- Alternativas sem letra no início.",
+    "- No comentário, explique a regra cobrada e, em poucas palavras, por que cada alternativa errada está errada.",
+    "",
+    "Responda SOMENTE com JSON válido (sem markdown, sem texto antes ou depois), neste formato:",
+    '[{"enunciado":"...","alternativas":["...","..."],"correta":"B","comentario":"..."}]',
+    '"correta" é a LETRA da alternativa certa.',
+  ].filter((l) => l !== false).join("\n");
+}
+
+function normalizaQuestao(g) {
+  if (!g || typeof g !== "object") return null;
+  const alternativas = (Array.isArray(g.alternativas) ? g.alternativas : [])
+    .map((a) => String(a).replace(/^\s*\(?[A-Ea-e]\s*[\)\.\]:\-–]\s*/, "").trim());
+  let correta = g.correta;
+  if (typeof correta === "string") {
+    const t = correta.trim(), m = t.match(/^\(?([A-Ea-e])\b/);
+    if (m) correta = m[1].toUpperCase().charCodeAt(0) - 65;
+    else if (/^\d+$/.test(t)) correta = Number(t);
+  }
+  return { enunciado: String(g.enunciado ?? "").trim(), alternativas, correta, comentario: String(g.comentario ?? "").trim() };
+}
+
+function extrairJson(texto) {
+  let t = texto.trim().replace(/^```(?:json)?/i, "").replace(/```\s*$/, "").trim();
+  const i = t.search(/[\[{]/);
+  if (i < 0) throw new Error("não encontrei JSON");
+  t = t.slice(i);
+  const fim = Math.max(t.lastIndexOf("]"), t.lastIndexOf("}"));
+  return JSON.parse(t.slice(0, fim + 1));
+}
+
+function mostrarGeradas(lista) {
+  const norm = lista.map(normalizaQuestao).filter(questaoValida);
+  const descartadas = lista.length - norm.length;
+  aiGeradas = norm;
+  if (!norm.length) {
+    $("ai-lista").innerHTML = "";
+    show("ai-salvar", false);
+    return setMsg($("ai-msg"), "Nenhuma questão válida na resposta. Tente de novo.", "err");
+  }
+  setMsg($("ai-msg"), `${norm.length} ${norm.length === 1 ? "questão lida" : "questões lidas"}` +
+    (descartadas ? ` (${descartadas} descartada(s) por estarem incompletas)` : "") +
+    ". Confira, desmarque as que não quiser e salve.", "ok");
+  $("ai-lista").innerHTML = norm.map((g, i) => `
+    <div class="ai-item">
+      <label class="chk"><input type="checkbox" data-ai-i="${i}" checked /> Questão ${i + 1}</label>
+      <p class="en">${esc(g.enunciado)}</p>
+      <ol>${g.alternativas.map((a, k) => `<li class="${k === g.correta ? "ok" : ""}">${esc(a)}</li>`).join("")}</ol>
+      ${g.comentario ? `<div class="co">${esc(g.comentario)}</div>` : ""}
+    </div>`).join("");
+  show("ai-salvar", true);
+}
+
+$("ai-copiar").addEventListener("click", async () => {
+  if (!aiBase) return;
+  const texto = montarPedido(aiBase, Number($("ai-n").value));
+  let copiou = false;
+  try { await navigator.clipboard.writeText(texto); copiou = true; } catch (_) { /* tenta o plano B */ }
+  if (!copiou) {
+    const ta = document.createElement("textarea");
+    ta.value = texto;
+    ta.style.cssText = "position:fixed;opacity:0;top:0";
+    $("ai-dialog").appendChild(ta);
+    ta.select();
+    try { copiou = document.execCommand("copy"); } catch (_) { /* nada */ }
+    ta.remove();
+  }
+  setMsg($("ai-msg"), copiou ? "Pedido copiado ✔ Cole na sua IA, depois traga a resposta para a caixa abaixo." : "Não consegui copiar automaticamente. Tente de novo ou use outro navegador.", copiou ? "ok" : "err");
+});
+
+$("ai-importar").addEventListener("click", () => {
+  const txt = $("ai-resposta").value.trim();
+  if (!txt) return setMsg($("ai-msg"), "Cole primeiro a resposta da IA na caixa.", "err");
+  try {
+    let d = extrairJson(txt);
+    if (!Array.isArray(d)) d = d.questoes || d.questions || [d];
+    mostrarGeradas(d);
+  } catch (e) {
+    setMsg($("ai-msg"), `Não consegui entender a resposta (${e.message}). Peça à IA: “responda só com o JSON, sem texto extra” e cole de novo.`, "err");
+  }
+});
+
+$("ai-salvar").addEventListener("click", async () => {
+  const sel = [...document.querySelectorAll("#ai-lista input[data-ai-i]:checked")].map((c) => aiGeradas[Number(c.dataset.aiI)]);
+  if (!sel.length) return setMsg($("ai-msg"), "Marque ao menos uma questão.", "err");
+  $("ai-salvar").disabled = true;
+  const rows = sel.map((g) => ({
+    enunciado: g.enunciado.trim(),
+    alternativas: g.alternativas.map((a) => a.trim()),
+    correta: g.correta,
+    disciplina: aiBase.disciplina || null,
+    banca: aiBase.banca || null,
+    ano: null,
+    comentario: (g.comentario || "").trim() || null,
+    gerada_ia: true,
+  }));
+  const { error } = await sb.from("questions").insert(rows);
+  $("ai-salvar").disabled = false;
+  if (error) {
+    const dica = /gerada_ia/.test(error.message) ? " — rode o supabase-update-2.sql no Supabase." : "";
+    return setMsg($("ai-msg"), "Erro ao salvar: " + error.message + dica, "err");
+  }
+  await loadData();
+  renderAll();
+  show("ai-salvar", false);
+  $("ai-lista").innerHTML = "";
+  aiGeradas = [];
+  setMsg($("ai-msg"), `${rows.length} questão(ões) salva(s) no banco ✔`, "ok");
+});
+
+$("ai-close").addEventListener("click", () => $("ai-dialog").close());
+$("btn-quiz-ai").addEventListener("click", () => openAi(current));
 
 /* ---------- OCR: preencher questão a partir de um print ---------- */
 const TESSERACT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";

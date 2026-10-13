@@ -1,6 +1,6 @@
 // Service worker simples: guarda o "esqueleto" do app para abrir rápido/offline.
 // Os dados vêm sempre do Supabase (nunca são cacheados aqui).
-const CACHE = "questoes-v2";
+const CACHE = "questoes-v5";
 const SHELL = [
   "./",
   "./index.html",

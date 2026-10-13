@@ -55,7 +55,14 @@ textarea { resize: vertical; }
 .meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .enunciado { font-size: 17px; line-height: 1.55; white-space: pre-wrap; margin: 0 0 14px; }
 
-.alts { display: grid; gap: 8px; }
+/* Texto longo sempre quebra dentro da própria caixa (inclusive links sem espaços) */
+.enunciado, .alt span, .feedback, .item .t, .item .m, .meta,
+.ai-origem, .ai-item .en, .ai-item li, .ai-item .co, .msg { overflow-wrap: anywhere; }
+.alts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.alt span { flex: 1; min-width: 0; line-height: 1.45; }
+
+/* Campos que crescem conforme o texto (sem rolagem lateral) */
+textarea[data-auto] { resize: none; overflow: hidden; line-height: 1.45; min-height: 44px; }
 .alt { display: flex; gap: 10px; align-items: flex-start; text-align: left; width: 100%;
   background: var(--bg); color: var(--text); border: 2px solid var(--panel-2);
   border-radius: 12px; padding: 12px; font-size: 16px; cursor: pointer; line-height: 1.4; }
@@ -72,6 +79,8 @@ textarea { resize: vertical; }
 
 .item .t { font-size: 15px; line-height: 1.45; margin: 0 0 8px;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.item .t { cursor: pointer; }
+.item .t.open { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .item .m { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .item .row .btn { margin-top: 0; }
 
@@ -81,6 +90,28 @@ textarea { resize: vertical; }
 .small { font-size: 13px; margin: 6px 0 8px; }
 kbd { background: var(--panel-2); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
 .ocr.drag { border-color: var(--accent); }
+
+.due { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--accent); }
+.due .btn { margin: 0; white-space: nowrap; }
+
+dialog { background: var(--panel); color: var(--text); border: 0; border-radius: var(--radius);
+  width: min(680px, 94vw); max-height: 88dvh; padding: 16px; overflow: auto; }
+dialog::backdrop { background: rgba(0, 0, 0, .65); }
+.dlg-head { display: flex; justify-content: space-between; align-items: center; }
+.ai-origem { background: var(--bg); border-radius: 10px; padding: 10px; font-size: 14px; line-height: 1.45;
+  color: var(--muted); max-height: 110px; overflow: auto; white-space: pre-wrap; }
+.ai-box { background: var(--bg); border-radius: 12px; padding: 10px 12px; margin-top: 12px; }
+.ai-box summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.ai-box .steps { margin: 8px 0 4px; padding-left: 20px; color: var(--muted); line-height: 1.5; }
+.ai-box textarea { margin-top: 10px; }
+.ai-item { background: var(--bg); border-radius: 12px; padding: 12px; margin-top: 12px; }
+.ai-item label.chk { display: flex; gap: 8px; align-items: center; color: var(--text); font-weight: 600; margin: 0 0 8px; }
+.ai-item label.chk input { width: auto; margin: 0; }
+.ai-item .en { white-space: pre-wrap; line-height: 1.5; margin: 0 0 8px; }
+.ai-item ol { list-style: upper-alpha; margin: 0 0 8px; padding-left: 26px; line-height: 1.45; }
+.ai-item li.ok { color: var(--ok); font-weight: 700; }
+.ai-item .co { font-size: 13px; color: var(--muted); white-space: pre-wrap; }
+.tag-ia { color: var(--accent); }
 
 .tabbar { position: fixed; bottom: 0; left: 0; right: 0; display: grid; grid-template-columns: repeat(4, 1fr);
   background: var(--panel); border-top: 1px solid var(--panel-2); padding-bottom: env(safe-area-inset-bottom); }

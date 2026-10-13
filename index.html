@@ -35,6 +35,11 @@
     <main class="container">
       <!-- PRATICAR -->
       <section id="tab-praticar" class="tab">
+        <div id="due-banner" class="card due hidden">
+          <span id="due-text"></span>
+          <button id="btn-due" class="btn small primary">Revisar agora</button>
+        </div>
+
         <div class="card filters">
           <label>Disciplina
             <select id="f-disciplina"><option value="">Todas</option></select>
@@ -44,6 +49,7 @@
               <option value="aleatoria">Aleatória</option>
               <option value="erradas">Só as que errei</option>
               <option value="novas">Ainda não respondidas</option>
+              <option value="revisar">🔁 Revisar hoje (espaçada)</option>
             </select>
           </label>
           <button id="btn-iniciar" class="btn primary">Iniciar</button>
@@ -59,6 +65,7 @@
           <div id="q-feedback" class="feedback hidden"></div>
           <div id="q-next" class="row hidden">
             <button id="btn-proxima" class="btn primary">Próxima →</button>
+            <button id="btn-quiz-ai" class="btn ghost">🤖 Gerar parecidas</button>
           </div>
         </div>
         <p id="quiz-msg" class="msg"></p>
@@ -81,7 +88,7 @@
           </div>
 
           <label>Enunciado
-            <textarea id="n-enunciado" rows="5" required></textarea>
+            <textarea id="n-enunciado" rows="5" required data-auto></textarea>
           </label>
 
           <div id="n-alts"></div>
@@ -102,7 +109,7 @@
           <datalist id="dl-disciplinas"></datalist>
 
           <label>Comentário / gabarito comentado (opcional)
-            <textarea id="n-comentario" rows="3"></textarea>
+            <textarea id="n-comentario" rows="3" data-auto></textarea>
           </label>
 
           <div class="row">
@@ -134,6 +141,42 @@
       <button data-tab="stats">📊<span>Estatísticas</span></button>
     </nav>
   </div>
+
+  <!-- QUESTÕES PARECIDAS (IA) -->
+  <dialog id="ai-dialog">
+    <div class="dlg-head">
+      <strong>🤖 Questões parecidas</strong>
+      <button type="button" id="ai-close" class="btn small ghost">Fechar</button>
+    </div>
+    <p class="muted small">Geradas por IA a partir da questão abaixo, cobrando o mesmo ponto de outros jeitos. <b>Confira o conteúdo</b> antes de estudar: a IA pode errar.</p>
+    <div id="ai-origem" class="ai-origem"></div>
+    <label>Quantidade de questões
+      <select id="ai-n"><option>2</option><option selected>3</option><option>5</option></select>
+    </label>
+
+    <details id="ai-manual" class="ai-box" open>
+      <summary>📋 Grátis, sem configurar: usar Claude.ai, ChatGPT ou Gemini</summary>
+      <ol class="small steps">
+        <li>Toque em <b>Copiar pedido</b>.</li>
+        <li>Abra a sua IA preferida (versão gratuita), cole e envie.</li>
+        <li>Copie a resposta inteira, cole abaixo e toque em <b>Importar</b>.</li>
+      </ol>
+      <div class="row">
+        <button type="button" id="ai-copiar" class="btn">Copiar pedido</button>
+      </div>
+      <textarea id="ai-resposta" rows="4" placeholder="Cole aqui a resposta da IA…"></textarea>
+      <button type="button" id="ai-importar" class="btn primary">Importar</button>
+    </details>
+
+    <details id="ai-auto" class="ai-box">
+      <summary>⚡ Automático (precisa configurar uma chave: veja o README-IA.md)</summary>
+      <button type="button" id="ai-gerar" class="btn primary">Gerar</button>
+    </details>
+
+    <p id="ai-msg" class="msg"></p>
+    <div id="ai-lista"></div>
+    <button type="button" id="ai-salvar" class="btn primary hidden">Salvar selecionadas</button>
+  </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
