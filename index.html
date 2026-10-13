@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Questões de Concurso</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- LOGIN -->
+  <main id="view-auth" class="center hidden">
+    <form id="auth-form" class="card auth">
+      <h1>📚 Questões</h1>
+      <p class="muted">Entre para acessar seu banco de questões.</p>
+      <label>E-mail <input type="email" id="auth-email" required autocomplete="email" /></label>
+      <label>Senha <input type="password" id="auth-pass" required minlength="6" autocomplete="current-password" /></label>
+      <button type="submit" class="btn primary" id="btn-login">Entrar</button>
+      <button type="button" class="btn ghost" id="btn-signup">Criar conta</button>
+      <p id="auth-msg" class="msg"></p>
+    </form>
+  </main>
+
+  <!-- APP -->
+  <div id="view-app" class="hidden">
+    <header class="topbar">
+      <strong>📚 Questões</strong>
+      <button id="btn-logout" class="btn small ghost">Sair</button>
+    </header>
+
+    <main class="container">
+      <!-- PRATICAR -->
+      <section id="tab-praticar" class="tab">
+        <div class="card filters">
+          <label>Disciplina
+            <select id="f-disciplina"><option value="">Todas</option></select>
+          </label>
+          <label>Modo
+            <select id="f-modo">
+              <option value="aleatoria">Aleatória</option>
+              <option value="erradas">Só as que errei</option>
+              <option value="novas">Ainda não respondidas</option>
+            </select>
+          </label>
+          <button id="btn-iniciar" class="btn primary">Iniciar</button>
+        </div>
+
+        <div id="quiz" class="card hidden">
+          <div class="meta" id="q-meta"></div>
+          <p class="enunciado" id="q-enunciado"></p>
+          <div id="q-alts" class="alts"></div>
+          <div id="q-actions" class="row">
+            <button id="btn-responder" class="btn primary" disabled>Responder</button>
+          </div>
+          <div id="q-feedback" class="feedback hidden"></div>
+          <div id="q-next" class="row hidden">
+            <button id="btn-proxima" class="btn primary">Próxima →</button>
+          </div>
+        </div>
+        <p id="quiz-msg" class="msg"></p>
+      </section>
+
+      <!-- ADICIONAR -->
+      <section id="tab-adicionar" class="tab hidden">
+        <form id="form-q" class="card">
+          <h2 id="form-title">Nova questão</h2>
+
+          <div id="ocr-box" class="ocr">
+            <strong>📷 Preencher a partir de um print</strong>
+            <p class="muted small">Cole a imagem com <kbd>Ctrl</kbd>+<kbd>V</kbd> (PC) ou escolha da galeria / tire uma foto. O texto será lido e colocado nos campos abaixo para você revisar.</p>
+            <input type="file" id="ocr-file" accept="image/*" class="hidden" />
+            <div class="row">
+              <button type="button" class="btn" id="btn-ocr">Escolher imagem / tirar foto</button>
+            </div>
+            <img id="ocr-preview" class="ocr-preview hidden" alt="Prévia do print" />
+            <p id="ocr-msg" class="msg"></p>
+          </div>
+
+          <label>Enunciado
+            <textarea id="n-enunciado" rows="5" required></textarea>
+          </label>
+
+          <div id="n-alts"></div>
+
+          <label>Alternativa correta
+            <select id="n-correta">
+              <option value="0">A</option><option value="1">B</option>
+              <option value="2">C</option><option value="3">D</option>
+              <option value="4">E</option>
+            </select>
+          </label>
+
+          <div class="grid2">
+            <label>Disciplina <input id="n-disciplina" list="dl-disciplinas" placeholder="Ex.: Direito Constitucional" /></label>
+            <label>Banca <input id="n-banca" placeholder="Ex.: CESPE" /></label>
+            <label>Ano <input id="n-ano" type="number" min="1980" max="2100" placeholder="2024" /></label>
+          </div>
+          <datalist id="dl-disciplinas"></datalist>
+
+          <label>Comentário / gabarito comentado (opcional)
+            <textarea id="n-comentario" rows="3"></textarea>
+          </label>
+
+          <div class="row">
+            <button type="submit" class="btn primary" id="btn-salvar">Salvar questão</button>
+            <button type="button" class="btn ghost hidden" id="btn-cancelar-edicao">Cancelar edição</button>
+          </div>
+          <p id="form-msg" class="msg"></p>
+        </form>
+      </section>
+
+      <!-- BANCO -->
+      <section id="tab-banco" class="tab hidden">
+        <div class="card">
+          <input id="b-busca" type="search" placeholder="Buscar no enunciado…" />
+        </div>
+        <div id="lista"></div>
+      </section>
+
+      <!-- ESTATÍSTICAS -->
+      <section id="tab-stats" class="tab hidden">
+        <div id="stats"></div>
+      </section>
+    </main>
+
+    <nav class="tabbar">
+      <button data-tab="praticar" class="active">✏️<span>Praticar</span></button>
+      <button data-tab="adicionar">➕<span>Adicionar</span></button>
+      <button data-tab="banco">🗂️<span>Banco</span></button>
+      <button data-tab="stats">📊<span>Estatísticas</span></button>
+    </nav>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
