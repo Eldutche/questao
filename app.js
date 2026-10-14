@@ -614,7 +614,7 @@ function joinParagraphs(lines) {
 function parseQuestion(raw) {
   let text = raw.replace(/\r/g, "").replace(/-\n(?=[a-zà-ú])/g, "");
   let correta = null;
-  text = text.replace(/gabarito\s*[:\-–]?\s*\(?([A-Ea-e])\)?/i, (_m, l) => {
+  text = text.replace(/(?:gabarito|resposta correta|alternativa correta)\s*[:\-–]?\s*\(?([A-Ea-e])\)?/i, (_m, l) => {
     correta = l.toUpperCase().charCodeAt(0) - 65;
     return "";
   });
@@ -632,6 +632,25 @@ function parseQuestion(raw) {
   }
   return { enunciado: joinParagraphs(enun), alternativas: alts.map((a) => a.trim()), correta };
 }
+
+function separarQuestaoCompleta() {
+  const q = parseQuestion($("n-enunciado").value);
+  const msg = $("parse-msg");
+  if (!q.enunciado || q.alternativas.length < 2) {
+    return setMsg(msg, "Não encontrei alternativas A), B) etc. Cole a questão completa com pelo menos duas alternativas.", "err");
+  }
+  $("n-enunciado").value = q.enunciado;
+  autoGrow($("n-enunciado"));
+  renderAddAlts(q.alternativas);
+  if (q.correta !== null && q.correta < q.alternativas.length) $("n-correta").value = String(q.correta);
+  setMsg(msg, `${q.alternativas.length} alternativas separadas${q.correta !== null ? ` · gabarito ${LETRAS[q.correta]}` : " · selecione a alternativa correta"}.`, "ok");
+}
+
+$("btn-separar-questao").addEventListener("click", separarQuestaoCompleta);
+$("n-enunciado").addEventListener("paste", () => setTimeout(() => {
+  const q = parseQuestion($("n-enunciado").value);
+  if (q.alternativas.length >= 2) separarQuestaoCompleta();
+}, 0));
 
 async function runOcr(file) {
   if (ocrBusy) return;
